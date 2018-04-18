@@ -1,0 +1,68 @@
+// Source: https://www.stata-journal.com/sjpdf.html?articlenum=dm0028
+
+help freduse
+
+// if cannot go to https://fred.stlouisfed.org/series/DTB3
+
+freduse dtb3
+
+rename observation_date caldate
+
+gen newdate = date(caldate, "YYYYMMDD")
+
+format newdate %td
+
+tsset newdate
+
+label var newdate date
+
+//These data do not contain observations for weekends and are missing for U.S. holidays.
+//We may not want to drop the observations containing missing data, though,
+//as we may have complete data for other variables: for instance, exchange rate data
+//are available every day. If there were no missing data in our series—only missing
+//observations—we could use Drukker’s suggestion and generate seqdate = n.
+
+
+quietly generate byte notmiss = dtb3 < .
+quietly generate seqdate = cond(notmiss, sum(notmiss),.)
+tsset seqdate
+
+//The variable seqdate is created as the sequential day number for every nonmissing day
+//and is itself missing when DTB3 is missing—allowing us to use this variable in tsset
+//and then use time-series operators (see [U] 11.1.1 varlist) in generate or estimation
+//commands such as regress. We may want to display the transformed data (or results
+//from estimation, such as predicted values) on a time-series graph. We can just revert
+//to the other tsset:
+
+// generate the variable by taking the difference
+quietly generate ddtb3 = D.dtb3
+
+// lag of up to t-5
+quietly regress ddtb3 L(1/5).ddtb3
+predict double ddtb3hat, xb
+label var ddtb3 "Daily change in three-month Treasury rate"
+tsset seqdate
+tsline ddtb3 ddtb3hat, yline(0) xlabel(, angle(45))
+
+
+// let's try to fit an arch model
+
+arch ddtb3 , arch(1/3)
+
+// let's try another model: arch garch model
+
+arch ddtb3 , arch(1) garch(1)
+
+// add 12 observations
+
+tsappend, add(12)
+
+// predict variance
+
+predict DTB3Var , variance
+
+// plot the graph to see in sample and out of sample variance
+
+tsline DTB3Var
+
+
